@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Japanese-English Matching Game</title>
+  <style>
+    /* Reset some default styles */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Roboto', sans-serif;
+      background-color: #f5f7fa;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #ece9e6, #ffffff);
+    }
+
+    h1 {
+      color: #34495e;
+      margin-bottom: 20px;
+      text-align: center;
+      font-size: 2em;
+      letter-spacing: 1px;
+    }
+
+    .message {
+      margin-bottom: 15px;
+      font-size: 1.1em;
+      color: #2c3e50;
+      text-align: center;
+      max-width: 90%;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      width: 100%;
+      max-width: 500px;
+      margin-bottom: 20px;
+    }
+
+    .grid-cell {
+      background-color: #ffffff;
+      border: none; /* Remove default borders */
+      padding: 0; /* Remove padding to maintain square shape */
+      text-align: center;
+      font-size: 1em;
+      cursor: pointer;
+      transition: background-color 0.3s, transform 0.2s, box-shadow 0.3s;
+      user-select: none;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      aspect-ratio: 1 / 1; /* Maintain square shape */
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      position: relative;
+      overflow: hidden; /* Ensure content doesn't overflow */
+    }
+
+    /* Emphasize English cells */
+    .grid-cell.english {
+      background-color: #d1ecf1;
+      color: #0c5460;
+      font-weight: bold;
+      font-size: 1.1em;
+      border: 2px solid #0c5460; /* Add border to English cells */
+    }
+
+    /* Highlight selected English cell */
+    .grid-cell.selected-english {
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+      transform: scale(1.05);
+      background-color: #a9d0f5;
+    }
+
+    /* Highlight available Japanese cells */
+    .grid-cell.available-japanese {
+      background-color: #f8d7da;
+      color: #721c24;
+      font-weight: bold;
+      cursor: pointer;
+      transform: scale(1.05);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+    /* Dim non-available Japanese cells */
+    .grid-cell.japanese.dimmed {
+      background-color: #f5f5f5;
+      color: #a0a0a0;
+      cursor: not-allowed;
+      transform: scale(1);
+      box-shadow: none;
+    }
+
+    /* Solved cells */
+    .grid-cell.solved {
+      background-color: #d4edda !important; /* Light green */
+      color: #155724 !important; /* Dark green */
+      cursor: default;
+      text-decoration: line-through;
+      opacity: 0.8;
+      box-shadow: none;
+      transform: scale(1);
+      pointer-events: none; /* Disable further clicks */
+    }
+
+    /* Highlight the final unmatched square */
+    .grid-cell.final-unmatched {
+      background-color: #fff3cd !important; /* Light yellow */
+      color: #856404 !important; /* Dark yellow */
+      animation: pulse 2s infinite;
+    }
+
+    /* Pulse animation for final unmatched square */
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4); }
+      70% { box-shadow: 0 0 0 10px rgba(255, 193, 7, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+    }
+
+    /* Hover effects */
+    .grid-cell:hover:not(.solved):not(.dimmed):not(.available-japanese) {
+      background-color: #e2e8f0;
+      transform: scale(1.02);
+    }
+
+    /* Reset Button Styling */
+    .reset-button {
+      padding: 12px 24px;
+      font-size: 1em;
+      cursor: pointer;
+      background-color: #3498db;
+      color: white;
+      border: none;
+      border-radius: 25px;
+      transition: background-color 0.3s, transform 0.2s;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    .reset-button:hover {
+      background-color: #2980b9;
+      transform: translateY(-2px);
+    }
+
+    /* Responsive Design */
+    @media (max-width: 600px) {
+      .grid-cell {
+        font-size: 0.9em;
+      }
+
+      .reset-button {
+        padding: 10px 20px;
+        font-size: 0.9em;
+      }
+
+      h1 {
+        font-size: 1.8em;
+      }
+
+      .message, .unmatched-meaning {
+        font-size: 1em;
+      }
+    }
+  </style>
+  <!-- Import Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <h1>Japanese-English Matching Game</h1>
+  <div class="message" id="message">Grid is loading...</div>
+  <div class="grid" id="grid">
+    <!-- Grid cells will be generated here -->
+  </div>
+  <div class="unmatched-meaning" id="unmatchedMeaning"></div>
+  <button class="reset-button" id="resetButton">Reset Game</button>
+
+  <script>
+    // Expanded list of word pairs for greater variety
+    const WORD_PAIRS = [
+      { japanese: '猫', english: 'Cat' },
+      { japanese: '犬', english: 'Dog' },
+      { japanese: '鳥', english: 'Bird' },
+      { japanese: '魚', english: 'Fish' },
+      { japanese: '馬', english: 'Horse' },
+      { japanese: '牛', english: 'Cow' },
+      { japanese: '豚', english: 'Pig' },
+      { japanese: '羊', english: 'Sheep' },
+      { japanese: '鹿', english: 'Deer' },
+      { japanese: '熊', english: 'Bear' },
+      { japanese: '虎', english: 'Tiger' },
+      { japanese: '龍', english: 'Dragon' },
+      { japanese: '亀', english: 'Turtle' },
+      { japanese: '狐', english: 'Fox' },
+      { japanese: '象', english: 'Elephant' },
+      { japanese: '蛇', english: 'Snake' },
+      { japanese: '狼', english: 'Wolf' },
+      { japanese: '猿', english: 'Monkey' },
+      { japanese: '鷹', english: 'Hawk' },
+      { japanese: '鯨', english: 'Whale' },
+      { japanese: '蛙', english: 'Frog' },
+      { japanese: '鯉', english: 'Carp' },
+      { japanese: '蝶', english: 'Butterfly' },
+      { japanese: '蜂', english: 'Bee' },
+      { japanese: '花', english: 'Flower' },
+      { japanese: '山', english: 'Mountain' },
+      { japanese: '川', english: 'River' },
+      { japanese: '海', english: 'Sea' },
+      { japanese: '空', english: 'Sky' },
+      { japanese: '森', english: 'Forest' },
+      { japanese: '石', english: 'Stone' },
+      { japanese: '家', english: 'House' },
+{ japanese: '車', english: 'Car' },
+{ japanese: '本', english: 'Book' },
+{ japanese: '学校', english: 'School' },
+{ japanese: '先生', english: 'Teacher' },
+{ japanese: '学生', english: 'Student' },
+{ japanese: '水', english: 'Water' },
+{ japanese: '火', english: 'Fire' },
+{ japanese: '木', english: 'Tree' },
+{ japanese: '金', english: 'Gold' },
+{ japanese: '銀', english: 'Silver' },
+{ japanese: '風', english: 'Wind' },
+{ japanese: '雲', english: 'Cloud' },
+{ japanese: '雨', english: 'Rain' },
+{ japanese: '雪', english: 'Snow' },
+{ japanese: '太陽', english: 'Sun' },
+{ japanese: '月', english: 'Moon' },
+{ japanese: '星', english: 'Star' },
+{ japanese: '海', english: 'Ocean' },
+{ japanese: '川', english: 'River' },
+{ japanese: '湖', english: 'Lake' },
+{ japanese: '山', english: 'Mountain' },
+{ japanese: '森', english: 'Forest' },
+{ japanese: '花', english: 'Flower' },
+{ japanese: '草', english: 'Grass' },
+{ japanese: '葉', english: 'Leaf' },
+{ japanese: '果物', english: 'Fruit' },
+{ japanese: '野菜', english: 'Vegetable' },
+{ japanese: '肉', english: 'Meat' },
+{ japanese: '魚', english: 'Fish' },
+{ japanese: '卵', english: 'Egg' },
+{ japanese: '米', english: 'Rice' },
+{ japanese: 'パン', english: 'Bread' },
+{ japanese: '牛乳', english: 'Milk' },
+{ japanese: '茶', english: 'Tea' },
+{ japanese: 'コーヒー', english: 'Coffee' },
+{ japanese: 'ビール', english: 'Beer' },
+{ japanese: 'ワイン', english: 'Wine' },
+{ japanese: '果汁', english: 'Juice' },
+{ japanese: '砂糖', english: 'Sugar' },
+{ japanese: '塩', english: 'Salt' },
+{ japanese: '酢', english: 'Vinegar' },
+{ japanese: '油', english: 'Oil' },
+{ japanese: 'バター', english: 'Butter' },
+{ japanese: 'チーズ', english: 'Cheese' },
+{ japanese: 'パン屋', english: 'Bakery' },
+{ japanese: 'レストラン', english: 'Restaurant' },
+{ japanese: 'カフェ', english: 'Cafe' },
+{ japanese: 'スーパー', english: 'Supermarket' },
+{ japanese: '市場', english: 'Market' },
+{ japanese: '店', english: 'Shop' },
+{ japanese: '時計', english: 'Clock' },
+{ japanese: '電話', english: 'Phone' },
+{ japanese: 'コンピューター', english: 'Computer' },
+{ japanese: 'テレビ', english: 'Television' },
+{ japanese: 'ラジオ', english: 'Radio' },
+{ japanese: 'カメラ', english: 'Camera' },
+{ japanese: '鏡', english: 'Mirror' },
+{ japanese: '椅子', english: 'Chair' },
+{ japanese: 'テーブル', english: 'Table' },
+{ japanese: 'ベッド', english: 'Bed' },
+{ japanese: 'ソファ', english: 'Sofa' },
+{ japanese: '冷蔵庫', english: 'Refrigerator' },
+{ japanese: '洗濯機', english: 'Washing Machine' },
+{ japanese: '掃除機', english: 'Vacuum Cleaner' },
+{ japanese: '電子レンジ', english: 'Microwave' },
+{ japanese: 'オーブン', english: 'Oven' },
+{ japanese: 'エアコン', english: 'Air Conditioner' },
+{ japanese: 'ヒーター', english: 'Heater' },
+{ japanese: '扇風機', english: 'Fan' },
+{ japanese: '自転車', english: 'Bicycle' },
+{ japanese: 'バイク', english: 'Motorcycle' },
+{ japanese: 'バス', english: 'Bus' },
+{ japanese: '電車', english: 'Train' },
+{ japanese: '地下鉄', english: 'Subway' },
+{ japanese: '飛行機', english: 'Airplane' },
+{ japanese: '船', english: 'Ship' },
+{ japanese: 'タクシー', english: 'Taxi' },
+{ japanese: 'バス停', english: 'Bus Stop' },
+{ japanese: '駅', english: 'Station' },
+{ japanese: '空港', english: 'Airport' },
+{ japanese: '道', english: 'Road' },
+{ japanese: '橋', english: 'Bridge' },
+{ japanese: '信号', english: 'Traffic Light' },
+{ japanese: '歩道', english: 'Sidewalk' },
+{ japanese: '公園', english: 'Park' },
+{ japanese: '遊園地', english: 'Amusement Park' },
+{ japanese: '図書館', english: 'Library' },
+{ japanese: '博物館', english: 'Museum' },
+{ japanese: '動物園', english: 'Zoo' },
+{ japanese: 'プール', english: 'Pool' },
+{ japanese: '庭', english: 'Garden' },
+{ japanese: 'ホテル', english: 'Hotel' },
+{ japanese: '病院', english: 'Hospital' },
+{ japanese: '薬局', english: 'Pharmacy' },
+{ japanese: '警察署', english: 'Police Station' },
+{ japanese: '消防署', english: 'Fire Station' },
+{ japanese: '郵便局', english: 'Post Office' },
+{ japanese: '銀行', english: 'Bank' },
+{ japanese: 'ATM', english: 'ATM' },
+{ japanese: '法律', english: 'Law' },
+{ japanese: '裁判所', english: 'Court' },
+{ japanese: '政治', english: 'Politics' },
+{ japanese: '選挙', english: 'Election' },
+{ japanese: 'ニュース', english: 'News' },
+{ japanese: '新聞', english: 'Newspaper' },
+{ japanese: '雑誌', english: 'Magazine' },
+{ japanese: '映画', english: 'Movie' },
+{ japanese: '音楽', english: 'Music' },
+{ japanese: '歌', english: 'Song' },
+{ japanese: 'ダンス', english: 'Dance' },
+{ japanese: '絵', english: 'Painting' },
+{ japanese: '写真', english: 'Photo' },
+{ japanese: '芸術', english: 'Art' },
+{ japanese: '文化', english: 'Culture' },
+{ japanese: '歴史', english: 'History' },
+{ japanese: '科学', english: 'Science' },
+{ japanese: '技術', english: 'Technology' },
+{ japanese: '数学', english: 'Mathematics' },
+{ japanese: '物理', english: 'Physics' },
+{ japanese: '化学', english: 'Chemistry' },
+{ japanese: '生物学', english: 'Biology' },
+{ japanese: '地理', english: 'Geography' },
+{ japanese: '文学', english: 'Literature' },
+{ japanese: '哲学', english: 'Philosophy' },
+{ japanese: '心理学', english: 'Psychology' },
+{ japanese: '経済', english: 'Economics' },
+{ japanese: 'ビジネス', english: 'Business' },
+{ japanese: 'マーケティング', english: 'Marketing' },
+{ japanese: '経営', english: 'Management' },
+{ japanese: '会計', english: 'Accounting' },
+{ japanese: '物流', english: 'Logistics' },
+{ japanese: '建築', english: 'Architecture' },
+{ japanese: 'デザイン', english: 'Design' },
+{ japanese: '広告', english: 'Advertising' },
+{ japanese: '出版', english: 'Publishing' },
+{ japanese: '編集', english: 'Editing' },
+{ japanese: '翻訳', english: 'Translation' },
+{ japanese: '通訳', english: 'Interpretation' },
+{ japanese: '写真家', english: 'Photographer' },
+{ japanese: '作家', english: 'Writer' },
+{ japanese: '詩人', english: 'Poet' },
+{ japanese: '画家', english: 'Painter' },
+{ japanese: '彫刻家', english: 'Sculptor' },
+{ japanese: '音楽家', english: 'Musician' },
+{ japanese: '歌手', english: 'Singer' },
+{ japanese: '俳優', english: 'Actor' },
+{ japanese: '女優', english: 'Actress' },
+{ japanese: '監督', english: 'Director' },
+{ japanese: 'プロデューサー', english: 'Producer' },
+{ japanese: '映画館', english: 'Cinema' },
+{ japanese: '劇場', english: 'Theater' },
+{ japanese: '展覧会', english: 'Exhibition' },
+{ japanese: '博覧会', english: 'Fair' },
+{ japanese: 'スポーツ', english: 'Sports' },
+{ japanese: 'サッカー', english: 'Soccer' },
+{ japanese: '野球', english: 'Baseball' },
+{ japanese: 'バスケットボール', english: 'Basketball' },
+{ japanese: 'テニス', english: 'Tennis' },
+{ japanese: 'ゴルフ', english: 'Golf' },
+{ japanese: '水泳', english: 'Swimming' },
+{ japanese: 'ランニング', english: 'Running' },
+{ japanese: 'ヨガ', english: 'Yoga' },
+{ japanese: 'ダイエット', english: 'Diet' },
+{ japanese: '健康', english: 'Health' },
+{ japanese: '病気', english: 'Illness' },
+{ japanese: '薬', english: 'Medicine' },
+{ japanese: '治療', english: 'Treatment' },
+{ japanese: '看護師', english: 'Nurse' },
+{ japanese: '医者', english: 'Doctor' },
+{ japanese: '患者', english: 'Patient' },
+{ japanese: '手術', english: 'Surgery' },
+{ japanese: '診察', english: 'Examination' },
+{ japanese: '予防接種', english: 'Vaccination' },
+{ japanese: '救急車', english: 'Ambulance' },
+{ japanese: '救急医療', english: 'Emergency Medicine' },
+{ japanese: '医療機器', english: 'Medical Equipment' },
+{ japanese: '病棟', english: 'Ward' },
+{ japanese: '診療所', english: 'Clinic' },
+{ japanese: '歯医者', english: 'Dentist' },
+{ japanese: '眼科', english: 'Ophthalmology' },
+{ japanese: '耳鼻咽喉科', english: 'ENT' },
+{ japanese: '婦人科', english: 'Gynecology' },
+{ japanese: '心臓', english: 'Heart' },
+{ japanese: '肺', english: 'Lungs' },
+{ japanese: '肝臓', english: 'Liver' },
+{ japanese: '腎臓', english: 'Kidney' },
+{ japanese: '脳', english: 'Brain' },
+{ japanese: '骨', english: 'Bone' },
+{ japanese: '筋肉', english: 'Muscle' },
+{ japanese: '血液', english: 'Blood' },
+{ japanese: '血圧', english: 'Blood Pressure' },
+{ japanese: '体温', english: 'Body Temperature' },
+{ japanese: '呼吸', english: 'Breathing' },
+{ japanese: '消化', english: 'Digestion' },
+{ japanese: '睡眠', english: 'Sleep' },
+{ japanese: '食欲', english: 'Appetite' },
+{ japanese: '体重', english: 'Weight' },
+{ japanese: '身長', english: 'Height' }
+
+      // Add more pairs as needed
+    ];
+
+    const GRID_SIZE = 5;
+    const gridElement = document.getElementById('grid');
+    const messageElement = document.getElementById('message');
+    const unmatchedMeaningElement = document.getElementById('unmatchedMeaning');
+    const resetButton = document.getElementById('resetButton');
+
+    let grid = [];
+    let selectedEnglish = null;
+    const MAX_ATTEMPTS = 1000;
+
+    // Utility function to shuffle an array
+    function shuffle(array) {
+      const arr = [...array];
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    // Helper function to get adjacent cells
+    function getAdjacentCells(row, col, gridState) {
+      const directions = [
+        { dRow: -1, dCol: 0 }, // Up
+        { dRow: 1, dCol: 0 },  // Down
+        { dRow: 0, dCol: -1 }, // Left
+        { dRow: 0, dCol: 1 },  // Right
+      ];
+
+      const adjacent = [];
+
+      directions.forEach(({ dRow, dCol }) => {
+        const newRow = row + dRow;
+        const newCol = col + dCol;
+        if (
+          newRow >= 0 &&
+          newRow < GRID_SIZE &&
+          newCol >= 0 &&
+          newCol < GRID_SIZE
+        ) {
+          adjacent.push({ row: newRow, col: newCol });
+        }
+      });
+
+      return adjacent;
+    }
+
+    // Backtracking pairing function
+    function findPairing(englishCells, japaneseCells, gridState) {
+      const pairing = [];
+      const usedJapanese = new Set();
+
+      function assign(index) {
+        if (index === englishCells.length) {
+          return true;
+        }
+
+        const engCell = englishCells[index];
+        const adjJapanese = getAdjacentCells(engCell.row, engCell.col, gridState).filter(cell => 
+          gridState[cell.row][cell.col].language === 'japanese' &&
+          !usedJapanese.has(`${cell.row},${cell.col}`)
+        );
+
+        const shuffledAdjJapanese = shuffle(adjJapanese);
+
+        for (let japCell of shuffledAdjJapanese) {
+          const key = `${japCell.row},${japCell.col}`;
+          if (!usedJapanese.has(key)) {
+            pairing.push(japCell);
+            usedJapanese.add(key);
+            if (assign(index + 1)) {
+              return true;
+            }
+            // Backtrack
+            pairing.pop();
+            usedJapanese.delete(key);
+          }
+        }
+
+        return false;
+      }
+
+      const success = assign(0);
+      return success ? pairing : null;
+    }
+
+    // Initialize the grid with a maximum number of attempts
+    function initializeGrid() {
+      grid = Array(GRID_SIZE).fill(null).map(() => Array(GRID_SIZE).fill(null));
+      selectedEnglish = null;
+      messageElement.textContent = 'Grid is loading...';
+      unmatchedMeaningElement.textContent = '';
+      gridElement.innerHTML = ''; // Clear existing grid
+
+      let attempts = 0;
+      let success = false;
+
+      while (attempts < MAX_ATTEMPTS && !success) {
+        // Reset grid
+        for (let row = 0; row < GRID_SIZE; row++) {
+          for (let col = 0; col < GRID_SIZE; col++) {
+            if (row % 2 === 0) { // Odd rows (0-based)
+              grid[row][col] = {
+                language: col % 2 === 0 ? 'japanese' : 'english',
+                word: null,
+                solved: false,
+              };
+            } else { // Even rows
+              grid[row][col] = {
+                language: col % 2 === 0 ? 'english' : 'japanese',
+                word: null,
+                solved: false,
+              };
+            }
+          }
+        }
+
+        // Collect all English and Japanese cells
+        const englishCells = [];
+        const japaneseCells = [];
+
+        for (let row = 0; row < GRID_SIZE; row++) {
+          for (let col = 0; col < GRID_SIZE; col++) {
+            if (grid[row][col].language === 'english') {
+              englishCells.push({ row, col });
+            } else {
+              japaneseCells.push({ row, col });
+            }
+          }
+        }
+
+        // Ensure there are enough word pairs
+        if (WORD_PAIRS.length < englishCells.length + 1) { // +1 for unmatched
+          messageElement.textContent = 'Not enough word pairs. Please add more to WORD_PAIRS.';
+          return;
+        }
+
+        // Shuffle word pairs
+        const shuffledPairs = shuffle(WORD_PAIRS);
+
+        // Select one Japanese word to remain unmatched
+        const unmatchedPairIndex = Math.floor(Math.random() * shuffledPairs.length);
+        const unmatchedJapaneseWord = shuffledPairs[unmatchedPairIndex].japanese;
+
+        // Remove the unmatched pair from the list
+        const pairsToAssign = shuffledPairs.filter((_, idx) => idx !== unmatchedPairIndex);
+
+        // Now, pairsToAssign.length should be equal to englishCells.length
+        if (pairsToAssign.length < englishCells.length) {
+          attempts++;
+          continue;
+        }
+
+        // Shuffle English cells
+        const shuffledEnglish = shuffle(englishCells);
+
+        // Implement backtracking to pair English cells with Japanese cells
+        const pairing = findPairing(shuffledEnglish, japaneseCells, grid);
+
+        if (pairing) {
+          // Assign words to the grid based on pairing
+          for (let i = 0; i < shuffledEnglish.length; i++) {
+            const engCell = shuffledEnglish[i];
+            const japCell = pairing[i];
+            const pair = pairsToAssign[i];
+
+            grid[engCell.row][engCell.col].word = pair.english;
+            grid[japCell.row][japCell.col].word = pair.japanese;
+          }
+
+          // Assign the unmatched Japanese word
+          // Find a Japanese cell that is not paired
+          const pairedJapanese = pairing.map(cell => `${cell.row},${cell.col}`);
+          const remainingJapanese = japaneseCells.filter(cell => !pairedJapanese.includes(`${cell.row},${cell.col}`));
+
+          if (remainingJapanese.length >= 1) {
+            const unmatchedPos = remainingJapanese[0];
+            grid[unmatchedPos.row][unmatchedPos.col].word = unmatchedJapaneseWord;
+          } else {
+            // No place to put unmatched word
+            attempts++;
+            continue;
+          }
+
+          success = true;
+        } else {
+          // Pairing failed, try again
+          attempts++;
+        }
+      }
+
+      if (success) {
+        renderGrid();
+        messageElement.textContent = 'Select an English word to start matching.';
+      } else {
+        messageElement.textContent = 'Failed to generate a solvable grid. Please try again.';
+      }
+    }
+
+    // Render the grid to the HTML
+    function renderGrid() {
+      gridElement.innerHTML = ''; // Clear existing grid
+
+      for (let row = 0; row < GRID_SIZE; row++) {
+        for (let col = 0; col < GRID_SIZE; col++) {
+          const cellData = grid[row][col];
+          const cellDiv = document.createElement('div');
+          cellDiv.classList.add('grid-cell', cellData.language);
+          cellDiv.setAttribute('data-row', row);
+          cellDiv.setAttribute('data-col', col);
+          cellDiv.textContent = cellData.word;
+
+          // Add event listener
+          cellDiv.addEventListener('click', () => handleCellClick(row, col));
+
+          gridElement.appendChild(cellDiv);
+        }
+      }
+    }
+
+    // Handle cell clicks
+    function handleCellClick(row, col) {
+      const cell = grid[row][col];
+      if (cell.solved) return;
+
+      if (cell.language === 'english') {
+        // Select an English word
+        selectedEnglish = { row, col };
+        updateSelection();
+        messageElement.textContent = `Selected English word: "${cell.word}". Now select an adjacent Japanese word.`;
+
+        // Highlight adjacent Japanese cells
+        highlightAvailableJapanese(row, col);
+      } else if (cell.language === 'japanese' && selectedEnglish) {
+        // Attempt to match with the selected English word
+        const { row: engRow, col: engCol } = selectedEnglish;
+        const engCell = grid[engRow][engCol];
+        const japWord = cell.word;
+        const engWord = engCell.word;
+
+        // Debugging logs
+        console.log(`Attempting to match English word "${engWord}" with Japanese word "${japWord}"`);
+
+        // Find the correct pair
+        const correctPair = WORD_PAIRS.find(
+          (pair) => pair.english === engWord && pair.japanese === japWord
+        );
+
+        if (correctPair) {
+          // Mark both cells as solved
+          grid[engRow][engCol].solved = true;
+          grid[row][col].solved = true;
+
+          // Find the corresponding DOM elements
+          const engCellDiv = document.querySelector(`.grid-cell[data-row="${engRow}"][data-col="${engCol}"]`);
+          const japCellDiv = document.querySelector(`.grid-cell[data-row="${row}"][data-col="${col}"]`);
+
+          if (engCellDiv && japCellDiv) {
+            engCellDiv.classList.add('solved');
+            japCellDiv.classList.add('solved');
+            console.log(`Marked cells (${engRow}, ${engCol}) and (${row}, ${col}) as solved.`);
+          } else {
+            console.error('Could not find the cell elements to mark as solved.');
+          }
+
+          messageElement.textContent = `Correct! "${engWord}" matches with "${japWord}".`;
+
+          // Check for remaining unsolved Japanese words
+          const unsolvedJapanese = [];
+          for (let r = 0; r < GRID_SIZE; r++) {
+            for (let c = 0; c < GRID_SIZE; c++) {
+              if (!grid[r][c].solved && grid[r][c].language === 'japanese') {
+                unsolvedJapanese.push({ row: r, col: c, word: grid[r][c].word });
+              }
+            }
+          }
+
+          if (unsolvedJapanese.length === 1) {
+            const remaining = unsolvedJapanese[0];
+            const remainingWord = remaining.word;
+            const meaningPair = WORD_PAIRS.find(pair => pair.japanese === remainingWord);
+            const meaning = meaningPair ? meaningPair.english : 'Unknown';
+
+            messageElement.textContent = `Congratulations! You have solved the round. The unmatched word is "${remainingWord}", which means "${meaning}".`;
+            unmatchedMeaningElement.textContent = `"${remainingWord}" means "${meaning}".`;
+
+            // Highlight the final unmatched square
+            const finalCellDiv = document.querySelector(`.grid-cell[data-row="${remaining.row}"][data-col="${remaining.col}"]`);
+            if (finalCellDiv) {
+              finalCellDiv.classList.add('final-unmatched');
+            }
+          }
+
+          // Reset the selected English word
+          selectedEnglish = null;
+          updateSelection();
+          clearAvailableJapaneseHighlights();
+        } else {
+          messageElement.textContent = 'Incorrect match. Please try again.';
+        }
+      }
+    }
+
+    // Update visual selection
+    function updateSelection() {
+      const cells = document.querySelectorAll('.grid-cell');
+      cells.forEach(cell => {
+        cell.classList.remove('selected-english');
+      });
+
+      if (selectedEnglish) {
+        const { row, col } = selectedEnglish;
+        const cellDiv = document.querySelector(`.grid-cell[data-row="${row}"][data-col="${col}"]`);
+        if (cellDiv) {
+          cellDiv.classList.add('selected-english');
+        }
+      }
+    }
+
+    // Highlight available Japanese cells after selecting an English word
+    function highlightAvailableJapanese(row, col) {
+      clearAvailableJapaneseHighlights();
+      const adjacent = getAdjacentCells(row, col, grid);
+      adjacent.forEach(cell => {
+        if (grid[cell.row][cell.col].language === 'japanese' && !grid[cell.row][cell.col].solved) {
+          const cellDiv = document.querySelector(`.grid-cell[data-row="${cell.row}"][data-col="${cell.col}"]`);
+          if (cellDiv) {
+            cellDiv.classList.add('available-japanese');
+            cellDiv.classList.remove('dimmed');
+          }
+        }
+      });
+
+      // Dim all other Japanese cells
+      const allJapaneseCells = document.querySelectorAll('.grid-cell.japanese');
+      allJapaneseCells.forEach(cellDiv => {
+        const isAvailable = cellDiv.classList.contains('available-japanese');
+        if (!isAvailable && !cellDiv.classList.contains('solved')) {
+          cellDiv.classList.add('dimmed');
+        }
+      });
+    }
+
+    // Clear available Japanese highlights and dim others
+    function clearAvailableJapaneseHighlights() {
+      const availableJapaneseCells = document.querySelectorAll('.available-japanese');
+      availableJapaneseCells.forEach(cell => {
+        cell.classList.remove('available-japanese');
+      });
+
+      const dimmedJapaneseCells = document.querySelectorAll('.grid-cell.japanese.dimmed');
+      dimmedJapaneseCells.forEach(cell => {
+        cell.classList.remove('dimmed');
+      });
+    }
+
+    // Event listener for reset button
+    resetButton.addEventListener('click', () => {
+      initializeGrid();
+      unmatchedMeaningElement.textContent = '';
+    });
+
+    // Initialize the grid on page load
+    initializeGrid();
+  </script>
+</body>
+</html>
